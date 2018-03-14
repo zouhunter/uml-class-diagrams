@@ -114,7 +114,7 @@ public class UmlTest
         }
 
     }
-   
+
     /// <summary>
     /// 从无到有创建一个代码
     /// </summary>
@@ -126,11 +126,36 @@ public class UmlTest
         var options = new TextEditorOptions();
         using (var script = new DocumentScript(document, formattingOptions, options))
         {
+            AstNode root = new ICSharpCode.NRefactory.CSharp.SyntaxTree();
             var usingSystem = new UsingDeclaration("System");
+            root.AddChild<AstNode>(usingSystem, Roles.Root);
+            var classNode = new TypeDeclaration();
+            classNode.Name = "DemoClass";
+            classNode.Modifiers = Modifiers.Public;
+            root.AddChild(classNode, Roles.TypeMemberRole);
+
+            var field = new FieldDeclaration();
+            field.Modifiers = Modifiers.Public;
+            field.Name = "int";// = Identifier.Create("int");
+            //var member = new MemberType();
+            //member.IsDoubleColon = false;
+            //member.MemberName = "int";
+            //field.ReturnType = new type("int");
+            field.Variables.Add(new VariableInitializer("DemoField",new IdentifierExpression("0")));
+            classNode.AddChild(field, Roles.TypeMemberRole);
+
+            var constractNode = new MethodDeclaration();
+            constractNode.Modifiers = Modifiers.Public;
+            constractNode.Name = "DemoClass";
+            constractNode.Body = new BlockStatement();
+            classNode.AddChild(constractNode, Roles.TypeMemberRole);
+
+            //classNode.Attributes.Add(new AttributeSection(new Attribute() { Arguments = { new IdentifierExpression("System.Serilizable") } }));
+            //classNode.TypeParameters.Add(new TypeParameterDeclaration("T"));
             Debug.Log(usingSystem.GetText());
             var blockState = new BlockStatement();
             //blockState.AddChild<AstType>(usingSystem, Roles.em);
-            script.AddTo(null, blockState);
+            script.InsertText(0, root.GetText());
         }
         Debug.Log(document.Text);
     }
@@ -166,6 +191,6 @@ public class UmlTest
 //NamespaceDeclaration    UsingScope ResolvedUsingScope
 //-	-	INamespace
 //SyntaxTree  IUnresolvedFile 	-
- 
+
 //- 	IUnresolvedAssembly IAssembly
 //- 	IProjectContent ICompilation
