@@ -3,6 +3,7 @@ using UnityEditor;
 using UnityEngine.TestTools;
 using NUnit.Framework;
 using System.Collections;
+using System.Collections.Generic;
 
 using ICSharpCode;
 using ICSharpCode.NRefactory;
@@ -82,7 +83,7 @@ public class UmlTest
     /// 测试使用Visitor进行查找
     /// </summary>
     [Test]
-    public void VisitorTest()
+    public void TryVisitorTest()
     {
         ICSharpCode.NRefactory.CSharp.SyntaxTree syntaxTree = new CSharpParser().Parse(classStr);
         syntaxTree.AcceptVisitor(new FindInvocationsVisitor());
@@ -121,45 +122,105 @@ public class UmlTest
     [Test]
     public void TryGenerateCode()
     {
-        var document = new ICSharpCode.NRefactory.Editor.StringBuilderDocument("");
-        var formattingOptions = FormattingOptionsFactory.CreateAllman();
-        var options = new TextEditorOptions();
-        using (var script = new DocumentScript(document, formattingOptions, options))
+        AstNode root = GetRoot();
+
+        if (root.Descendants.OfType<UsingDeclaration>().Where(x => x.Namespace == "System").Count() == 0)
         {
-            AstNode root = new ICSharpCode.NRefactory.CSharp.SyntaxTree();
-            var usingSystem = new UsingDeclaration("System");
-            root.AddChild<AstNode>(usingSystem, Roles.Root);
-            var classNode = new TypeDeclaration();
+            root.AddChild<AstNode>(new UsingDeclaration("System"), Roles.Root);
+        }
+
+        if (root.Descendants.OfType<UsingDeclaration>().Where(x => x.Namespace == "UnityEngine").Count() == 0)
+        {
+            root.AddChild<AstNode>(new UsingDeclaration("UnityEngine"), Roles.Root);
+        }
+
+        TypeDeclaration classNode = null;
+
+        if (root.Descendants.OfType<TypeDeclaration>().Where(x => x.Name == "DemoClass").Count() != 0)
+        {
+            classNode = root.Descendants.OfType<TypeDeclaration>().Where(x => x.Name == "DemoClass").First();
+        }
+        else
+        {
+            classNode = new TypeDeclaration();
             classNode.Name = "DemoClass";
             classNode.Modifiers = Modifiers.Public;
-            root.AddChild(classNode, Roles.TypeMemberRole);
 
+            var comment = new Comment("<summary>", CommentType.Documentation);
+            root.AddChild(comment, Roles.Comment);
+            comment = new Comment("代码说明信息", CommentType.Documentation);
+            root.AddChild(comment, Roles.Comment);
+            comment = new Comment("<summary>", CommentType.Documentation);
+            root.AddChild(comment, Roles.Comment);
+          
+            root.AddChild(classNode, Roles.TypeMemberRole);
+        }
+
+        if (classNode.Descendants.OfType<FieldDeclaration>().Where(x => x.Variables.Where(y=>y.Name == "DemoField").Count() > 0).Count() == 0)
+        {
             var field = new FieldDeclaration();
             field.Modifiers = Modifiers.Public;
-            field.Name = "int";// = Identifier.Create("int");
-            //var member = new MemberType();
-            //member.IsDoubleColon = false;
-            //member.MemberName = "int";
-            //field.ReturnType = new type("int");
-            field.Variables.Add(new VariableInitializer("DemoField",new IdentifierExpression("0")));
+            field.ReturnType = new ICSharpCode.NRefactory.CSharp.PrimitiveType("int");
+            field.Variables.Add(new VariableInitializer("DemoField", new IdentifierExpression("0")));
             classNode.AddChild(field, Roles.TypeMemberRole);
+        }
 
-            var constractNode = new MethodDeclaration();
+        if (classNode.Descendants.OfType<ConstructorDeclaration>().Where(x => x.Name == "DemoClass").Count() == 0)
+        {
+            var constractNode = new ConstructorDeclaration();
             constractNode.Modifiers = Modifiers.Public;
             constractNode.Name = "DemoClass";
-            constractNode.Body = new BlockStatement();
+            var statement = new BlockStatement();
+            statement.Add(new AssignmentExpression(new IdentifierExpression("DemoField"), new PrimitiveExpression(1)));
+            constractNode.Body = statement;
             classNode.AddChild(constractNode, Roles.TypeMemberRole);
-
-            //classNode.Attributes.Add(new AttributeSection(new Attribute() { Arguments = { new IdentifierExpression("System.Serilizable") } }));
-            //classNode.TypeParameters.Add(new TypeParameterDeclaration("T"));
-            Debug.Log(usingSystem.GetText());
-            var blockState = new BlockStatement();
-            //blockState.AddChild<AstType>(usingSystem, Roles.em);
-            script.InsertText(0, root.GetText());
         }
-        Debug.Log(document.Text);
+
+        if (classNode.Descendants.OfType<MethodDeclaration>().Where(x => x.Name == "DemoFunction").Count() == 0)
+        {
+            var mainFuncNode = new MethodDeclaration();
+            mainFuncNode.Modifiers = Modifiers.Public;
+            mainFuncNode.Name = "DemoFunction";
+            mainFuncNode.ReturnType = new ICSharpCode.NRefactory.CSharp.PrimitiveType("void");
+            var parameter1 = new ParameterDeclaration();
+            parameter1.Type = new ICSharpCode.NRefactory.CSharp.PrimitiveType("int");
+            parameter1.Name = "arg1";
+            mainFuncNode.Parameters.Add(parameter1);
+            var statement = new BlockStatement();
+            statement.Add(new InvocationExpression(new MemberReferenceExpression(new IdentifierExpression("Debug"), "Log"), new PrimitiveExpression("Hellow World")));
+            mainFuncNode.Body = statement;
+
+            var parameter2 = new ParameterDeclaration();
+            //parameter2.Type = new ICSharpCode.NRefactory.CSharp.PrimitiveType("int[]");
+            var type = new ComposedType();
+            type.ArraySpecifiers.Add(new ArraySpecifier());
+            type.BaseType = new ICSharpCode.NRefactory.CSharp.PrimitiveType("int");
+            type.HasNullableSpecifier = true;
+            parameter2.Type = type;
+            parameter2.Name = "arg2";
+            mainFuncNode.Parameters.Add(parameter2);
+            classNode.AddChild(mainFuncNode, Roles.TypeMemberRole);
+        }
+
+        Debug.Log(root.GetText());
+        SaveToAssetFolder(root.GetText());
     }
 
+    private void SaveToAssetFolder(string text)
+    {
+        System.IO.File.WriteAllText(Application.dataPath + "/generated.cs", text);
+        AssetDatabase.Refresh();
+    }
+
+    private ICSharpCode.NRefactory.CSharp.SyntaxTree GetRoot()
+    {
+        var path = Application.dataPath + "/generated.cs";
+        if (File.Exists(path))
+        {
+            return new ICSharpCode.NRefactory.CSharp.CSharpParser().Parse(File.ReadAllText(path,Encoding.UTF8));
+        }
+        return new ICSharpCode.NRefactory.CSharp.SyntaxTree();
+    }
 
 }
 //Roles
@@ -194,3 +255,13 @@ public class UmlTest
 
 //- 	IUnresolvedAssembly IAssembly
 //- 	IProjectContent ICompilation
+
+//var document = new ICSharpCode.NRefactory.Editor.StringBuilderDocument("");
+//var formattingOptions = FormattingOptionsFactory.CreateAllman();
+//var options = new TextEditorOptions();
+//using (var script = new DocumentScript(document, formattingOptions, options))
+//{
+//    script.InsertText(0, root.GetText());
+//}
+//Debug.Log(document.Text);
+//SaveToAssetFolder(document.Text);
